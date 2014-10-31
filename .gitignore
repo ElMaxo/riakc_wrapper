@@ -1,0 +1,10 @@
+.eunit/*
+deps/*
+*.o
+*.beam
+doc/*
+ebin/*
+rel
+.idea
+.rebar
+*.iml

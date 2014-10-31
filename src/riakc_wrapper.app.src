@@ -1,0 +1,11 @@
+{application, riakc_wrapper,
+ [
+  {description, "Riak protobufs client wrapper"},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
