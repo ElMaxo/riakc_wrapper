@@ -6,7 +6,7 @@
 -export([start/0, start/2, stop/0, stop/1, startPool/1, stopPool/1]).
 
 %% API
--export([storeData/4, storeData/5, createObject/4, createLocalObject/4, storeLocalObject/2, getObject/3, getRawObject/3, updateObject/4, updateObject/2, deleteObject/3,
+-export([storeData/4, storeData/5, storeData/6, createObject/4, createLocalObject/4, createLocalObject/5, storeLocalObject/2, getObject/3, getRawObject/3, updateObject/4, updateObject/2, deleteObject/3,
   setBucketProperties/4, getKeysList/2, searchBySecondaryIndex/4]).
 
 %% Helpers
@@ -41,7 +41,6 @@ stop() ->
 
 start(_StartType, _Args) ->
   %Args = [{riakpool, [{size, 3}, {max_overflow, 20}], [{server, "127.0.0.1"}, {port, 8087}, {use_objects_encoding, true}]}],
-  lager:start(),
   riakc_wrapper_sup:start_link().
 
 stop(_State) ->
@@ -109,6 +108,33 @@ storeData(PoolName, Bucket, Key, Data, Indexes) ->
       {error, UnknowResult}
   end.
 
+storeData(PoolName, Bucket, Key, Data, [], []) ->
+  storeData(PoolName, Bucket, Key, Data);
+storeData(PoolName, Bucket, Key, Data, Indexes, []) ->
+  storeData(PoolName, Bucket, Key, Data, Indexes);
+storeData(PoolName, Bucket, Key, Data, Indexes, ContentType) ->
+  FindResult = getRawObject(PoolName, Bucket, Key),
+  case FindResult of
+    {error, notfound} ->
+      NewObject = createLocalObject(PoolName, Bucket, Key, Data, ContentType),
+      MD = riakc_obj:get_update_metadata(NewObject),
+      NewMD = riakc_obj:set_secondary_index(MD, Indexes),
+      FinalObj = riakc_obj:update_metadata(NewObject, NewMD),
+      storeLocalObject(PoolName, FinalObj);
+    {error, sibling_detected, BrokenObject} ->
+      PartlyRepairedObject = riakc_obj:select_sibling(1, BrokenObject),
+      PartlyRepairResult = updateObject(PoolName, PartlyRepairedObject),
+      {error, sibling_detected, PartlyRepairResult};
+    {ok, Object} ->
+      NewObject = riakc_obj:update_value(Object, Data, ContentType),
+      MD = riakc_obj:get_update_metadata(NewObject),
+      NewMD = riakc_obj:set_secondary_index(MD, Indexes),
+      FinalObj = riakc_obj:update_metadata(NewObject, NewMD),
+      updateObject(PoolName, FinalObj);
+    UnknowResult ->
+      {error, UnknowResult}
+  end.
+
 %%--------------------------------------------------------------------
 %% @doc
 %% Creates specified object at specified bucket
@@ -137,6 +163,11 @@ createObject(PoolName, Bucket, Key, Object) ->
 createLocalObject(PoolName, Bucket, Key, Object) ->
   poolboy:transaction(PoolName, fun(Worker) ->
     gen_server:call(Worker, {create_local, Bucket, Key, Object}, infinity)
+  end, infinity).
+
+createLocalObject(PoolName, Bucket, Key, Object, ContentType) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, {create_local, Bucket, Key, Object, ContentType}, infinity)
   end, infinity).
 
 %%--------------------------------------------------------------------

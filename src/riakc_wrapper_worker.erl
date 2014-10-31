@@ -107,6 +107,10 @@ handle_call({create_local, Bucket, Key, Object}, _From, State) ->
   end,
   {reply, RiakObject, State};
 
+handle_call({create_local, Bucket, Key, Object, ContentType}, _From, State) ->
+  RiakObject = riakc_obj:new(Bucket, Key, Object, ContentType),
+  {reply, RiakObject, State};
+
 % Callback for storeLocalObject api function
 handle_call({store_local, RiakObject}, _From, State) ->
   Reply = riakc_pb_socket:put(State#state.riak_kv_pid, RiakObject),
