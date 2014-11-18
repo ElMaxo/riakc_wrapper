@@ -129,6 +129,24 @@ handle_call({store_local, RiakObject}, _From, State) ->
   end,
   Result;
 
+% Callback for storeLocalObject api function
+handle_call({store_local, RiakObject, Options}, _From, State) ->
+  Reply = riakc_pb_socket:put(State#state.riak_kv_pid, RiakObject, Options),
+  case Reply of
+    {error, disconnected} ->
+      RestoreResult = restoreConnection(State),
+      case RestoreResult of
+        {noreply, NewState} ->
+          ReplyAfterReconnect = riakc_pb_socket:put(NewState#state.riak_kv_pid, RiakObject, Options),
+          Result = {reply, ReplyAfterReconnect, NewState};
+        _ ->
+          Result = {stop, connection_lost, {error, disconnected}, State}
+      end;
+    _ ->
+      Result = {reply, Reply, State}
+  end,
+  Result;
+
 % Callback for getObject api function
 handle_call({get, Bucket, Key}, _From, State) ->
   GetResult = riakc_pb_socket:get(State#state.riak_kv_pid, Bucket, Key),

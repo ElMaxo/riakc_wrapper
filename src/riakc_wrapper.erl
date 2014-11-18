@@ -7,7 +7,7 @@
 
 %% API
 -export([storeData/4, storeData/5, storeData/6, createObject/4, createLocalObject/4, createLocalObject/5,
-  storeLocalObject/2, getObject/3, getRawObject/3, getRawObject/4, updateObject/4, updateObject/2, deleteObject/3,
+  storeLocalObject/2, storeLocalObject/3, getObject/3, getRawObject/3, getRawObject/4, updateObject/4, updateObject/2, deleteObject/3,
   setBucketProperties/4, getKeysList/2, getBucketsList/1, searchBySecondaryIndex/4]).
 
 %% Helpers
@@ -183,6 +183,21 @@ createLocalObject(PoolName, Bucket, Key, Object, ContentType) ->
 storeLocalObject(PoolName, RiakObject) ->
   poolboy:transaction(PoolName, fun(Worker) ->
     gen_server:call(Worker, {store_local, RiakObject}, infinity)
+  end, infinity).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Stores specified riak object
+%%
+%% @spec storeLocalObject(RiakOject, Options) -> ok | {error, Error}
+%% Key - Key to associate object with - binary()
+%% Object - Object to create and store - riakc_obj
+%% Options - Store options - any()
+%% @end
+%%--------------------------------------------------------------------
+storeLocalObject(PoolName, RiakObject, Options) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, {store_local, RiakObject, Options}, infinity)
   end, infinity).
 
 %%--------------------------------------------------------------------
