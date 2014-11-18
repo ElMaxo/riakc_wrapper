@@ -6,8 +6,9 @@
 -export([start/0, start/2, stop/0, stop/1, startPool/1, stopPool/1]).
 
 %% API
--export([storeData/4, storeData/5, storeData/6, createObject/4, createLocalObject/4, createLocalObject/5, storeLocalObject/2, getObject/3, getRawObject/3, updateObject/4, updateObject/2, deleteObject/3,
-  setBucketProperties/4, getKeysList/2, searchBySecondaryIndex/4]).
+-export([storeData/4, storeData/5, storeData/6, createObject/4, createLocalObject/4, createLocalObject/5,
+  storeLocalObject/2, getObject/3, getRawObject/3, getRawObject/4, updateObject/4, updateObject/2, deleteObject/3,
+  setBucketProperties/4, getKeysList/2, getBucketsList/1, searchBySecondaryIndex/4]).
 
 %% Helpers
 -export([getValuesCount/1, getValues/1, getObjectSibling/2, getObjectMetadata/1, updateObjectMetadata/2, getMetadataEntry/2,
@@ -214,6 +215,21 @@ getRawObject(PoolName, Bucket, Key) ->
 
 %%--------------------------------------------------------------------
 %% @doc
+%% Get object associated with key at raw riak format
+%%
+%% @spec getRawObject(Bucket, Key, Options) -> {ok, Riak Object} | {error, Error}
+%% Bucket - Bucket name - binary()
+%% Key - Key to associated with object - binary()
+%% Options - get options - any()
+%% @end
+%%--------------------------------------------------------------------
+getRawObject(PoolName, Bucket, Key, Options) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, {get_raw, Bucket, Key, Options}, infinity)
+  end, infinity).
+
+%%--------------------------------------------------------------------
+%% @doc
 %% Updates specified object at specified bucket
 %%
 %% @spec updateObject(Bucket, Key, NewValue) -> ok | {error, Error}
@@ -284,6 +300,18 @@ setBucketProperties(PoolName, Bucket, NVal, AllowMult) ->
 getKeysList(PoolName, Bucket) ->
   poolboy:transaction(PoolName, fun(Worker) ->
     gen_server:call(Worker, {keys_list, Bucket}, infinity)
+  end, infinity).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get buckets list at specified server
+%%
+%% @spec getBucketList() -> buckets list [Bucket1, Bucket2...] | {error, Error}
+%% @end
+%%--------------------------------------------------------------------
+getBucketsList(PoolName) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, list_buckets, infinity)
   end, infinity).
 
 %%%===================================================================

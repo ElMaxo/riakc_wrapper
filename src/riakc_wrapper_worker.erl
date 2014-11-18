@@ -209,6 +209,46 @@ handle_call({get_raw, Bucket, Key}, _From, State) ->
   end,
   Result;
 
+% Callback for getRawObject api function
+handle_call({get_raw, Bucket, Key, Options}, _From, State) ->
+  GetResult = riakc_pb_socket:get(State#state.riak_kv_pid, Bucket, Key, Options),
+  case GetResult of
+    {error, disconnected} ->
+      RestoreResult = restoreConnection(State),
+      case RestoreResult of
+        {noreply, NewState} ->
+          ReplyAfterReconnect = riakc_pb_socket:get(NewState#state.riak_kv_pid, Bucket, Key, Options),
+          case ReplyAfterReconnect of
+            {ok, Fetched} ->
+              ValCount = riakc_wrapper:getValuesCount(Fetched),
+              if
+                ValCount > 1 ->
+                  Result = {reply, {error, sibling_detected, Fetched}, NewState};
+                true ->
+                  Result = {reply, {ok, Fetched}, NewState}
+              end;
+            _ ->
+              Result = {reply, ReplyAfterReconnect, NewState}
+          end;
+        _ ->
+          Result = {stop, connection_lost, {error, disconnected}, State}
+      end;
+    _ ->
+      case GetResult of
+        {ok, Fetched} ->
+          ValCount = riakc_wrapper:getValuesCount(Fetched),
+          if
+            ValCount > 1 ->
+              Result = {reply, {error, sibling_detected, Fetched}, State};
+            true ->
+              Result = {reply, {ok, Fetched}, State}
+          end;
+        _ ->
+          Result = {reply, GetResult, State}
+      end
+  end,
+  Result;
+
 % Callback for updateObject api function
 handle_call({update, Bucket, Key, NewValue}, _From, State) ->
   GetResult = riakc_pb_socket:get(State#state.riak_kv_pid, Bucket, Key),
@@ -341,6 +381,24 @@ handle_call({keys_list, Bucket}, _From, State) ->
   end,
   Result;
 
+% Callback for getBucketsList api function
+handle_call(list_buckets, _From, State) ->
+  Reply = riakc_pb_socket:list_buckets(State#state.riak_kv_pid),
+  case Reply of
+    {error, disconnected} ->
+      RestoreResult = restoreConnection(State),
+      case RestoreResult of
+        {noreply, NewState} ->
+          ReplyAfterReconnect = riakc_pb_socket:list_buckets(NewState#state.riak_kv_pid),
+          Result = {reply, ReplyAfterReconnect, NewState};
+        _ ->
+          Result = {stop, connection_lost, {error, disconnected}, State}
+      end;
+    _ ->
+      Result = {reply, Reply, State}
+  end,
+  Result;
+
 % Callback for encodeData api function
 handle_call({encode_data, Data}, _From, State) ->
   if
@@ -423,16 +481,19 @@ encodeObject(Bucket, Key, Object) ->
 decodeObject(RiakObject) ->
   case riakc_obj:get_content_type(RiakObject) of
     "application/x-erlang-term" ->
-      try
-        {ok, binary_to_term(riakc_obj:get_value(RiakObject))}
-      catch
-        _:Reason ->
-          {error, Reason}
-      end;
-    undefined ->
-      {ok, riakc_obj:get_value(RiakObject)};
-    OtherCType ->
-      {error, {unknown_content_type, OtherCType}}
+      safeBinToTerm(riakc_obj:get_value(RiakObject));
+    "application/x-erlang-binary" ->
+      safeBinToTerm(riakc_obj:get_value(RiakObject));
+    _ ->
+      {ok, riakc_obj:get_value(RiakObject)}
+  end.
+
+safeBinToTerm(Bin) ->
+  try
+    binary_to_term(Bin)
+  catch
+    _:Reason ->
+      {error, Reason}
   end.
 
 restoreConnection(State)  when State#state.reconnects_left =< 0 ->
