@@ -8,7 +8,8 @@
 %% API
 -export([storeData/4, storeData/5, storeData/6, createObject/4, createLocalObject/4, createLocalObject/5,
   storeLocalObject/2, storeLocalObject/3, getObject/3, getRawObject/3, getRawObject/4, updateObject/4, updateObject/2, deleteObject/3,
-  setBucketProperties/4, getKeysList/2, getBucketsList/1, searchBySecondaryIndex/4]).
+  setBucketProperties/4, getKeysList/2, getBucketsList/1, searchBySecondaryIndex/4,
+  createEmptySet/0, addToSet/2, removeFromSet/2, getSetSize/1, getSetVal/3, getRawSetVal/3, getLocalSetVal/1, storeSetObject/4]).
 
 %% Helpers
 -export([getValuesCount/1, getValues/1, getObjectSibling/2, getObjectMetadata/1, updateObjectMetadata/2, getMetadataEntry/2,
@@ -601,6 +602,118 @@ deleteLinks(Metadata, Tag) ->
 clearLinks(Metadata) ->
   riakc_obj:clear_links(Metadata).
 
+%%--------------------------------------------------------------------
+%% @doc
+%% Creates new empty set object (since Riak 2.0)
+%%
+%% @spec createEmptySet() -> set()
+%% @end
+%%--------------------------------------------------------------------
+createEmptySet() ->
+  riakc_set:new().
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Appends specified entry (entries) to specified set
+%%
+%% @spec addToSet(Set, Entry) -> set()
+%% Set - set(), set to add data to
+%% Entry - binary() | [binary()], entry to add to set
+%% @end
+%%--------------------------------------------------------------------
+addToSet(Set, Entry) when is_list(Entry) ->
+  addEntriesToSet(Entry, Set);
+addToSet(Set, Entry) when is_binary(Entry) ->
+  riakc_set:add_element(Entry, Set);
+addToSet(_Set, _Entry) ->
+  {error, badarg}.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Removes specified entry (entries) from specified set
+%%
+%% @spec removeFromSet(Set, Entry) -> set()
+%% Set - set(), set to add data to
+%% Entry - binary() | [binary()], entry to remove from set
+%% @end
+%%--------------------------------------------------------------------
+removeFromSet(Set, Entry) when is_list(Entry) ->
+  removeEntriesFromSet(Entry, Set);
+removeFromSet(Set, Entry) when is_binary(Entry) ->
+  case riakc_set:is_element(Entry, Set) of
+    true ->
+      riakc_set:del_element(Entry, Set);
+    _ ->
+      Set
+  end;
+removeFromSet(_Set, _Entry) ->
+  {error, badarg}.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets specified set size
+%%
+%% @spec getSetSize(Set) -> integer()
+%% Set - set(), set to get size
+%% @end
+%%--------------------------------------------------------------------
+getSetSize(Set) ->
+  riakc_set:size(Set).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets specified set value from specified bucket
+%%
+%% @spec getSetVal(Bucket, Key, NewValue) -> {ok, Val} | {error, Error}
+%% Bucket - Bucket name - binary()
+%% Key - Key to associate set with - binary()
+%% @end
+%%--------------------------------------------------------------------
+getSetVal(PoolName, Bucket, Key) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, {get_set, Bucket, Key}, infinity)
+  end, infinity).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets specified set object from specified bucket
+%%
+%% @spec getSetVal(Bucket, Key) -> {ok, Set} | {error, Error}
+%% Bucket - Bucket name - binary()
+%% Key - Key to associate set with - binary()
+%% @end
+%%--------------------------------------------------------------------
+getRawSetVal(PoolName, Bucket, Key) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, {get_raw_set, Bucket, Key}, infinity)
+  end, infinity).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets value from specified local set object
+%%
+%% @spec getLocalSetVal(Set) -> any()
+%% Set to get value from
+%% @end
+%%--------------------------------------------------------------------
+getLocalSetVal(Set) ->
+  riakc_set:value(Set).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Stores specified set object at riak at specified bucket and key
+%%
+%% @spec storeSetObject(Bucket, Key, Set) -> ok | {error, Error}
+%% Bucket - Bucket name - binary()
+%% Key - Key to associate set with - binary()
+%% Set - set object to store - set()
+%% @end
+%%--------------------------------------------------------------------
+storeSetObject(PoolName, Bucket, Key, Set) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, {store_set, Bucket, Key, Set}, infinity)
+  end, infinity).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -609,3 +722,20 @@ encodeData(PoolName, Data) ->
   poolboy:transaction(PoolName, fun(Worker) ->
     gen_server:call(Worker, {encode_data, Data}, infinity)
   end, infinity).
+
+addEntriesToSet([], Set) ->
+  Set;
+addEntriesToSet([Entry | OtherEntries], Set) ->
+  NewSet = riakc_set:add_element(Entry, Set),
+  addEntriesToSet(OtherEntries, NewSet).
+
+removeEntriesFromSet([], Set) ->
+  Set;
+removeEntriesFromSet([Entry | Entries], Set) ->
+  case riakc_set:is_element(Entry, Set) of
+    true ->
+      NewSet = riakc_set:del_element(Entry, Set),
+      removeEntriesFromSet(Entries, NewSet);
+    _ ->
+      removeEntriesFromSet(Entries, Set)
+  end.
