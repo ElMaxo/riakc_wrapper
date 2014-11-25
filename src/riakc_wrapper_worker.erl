@@ -189,13 +189,13 @@ handle_call({get, Bucket, Key}, _From, State) ->
 
 % Callback for getSetVal api function
 handle_call({get_set, Bucket, Key}, _From, State) ->
-  GetResult = riakc_pb_socket:fetch_type(State#state.riak_kv_pid, {<<"sets">>, Bucket}, Key),
+  GetResult = riakc_pb_socket:fetch_type(State#state.riak_kv_pid, {Bucket, Bucket}, Key),
   Result = case GetResult of
     {error, disconnected} ->
       RestoreResult = restoreConnection(State),
       case RestoreResult of
         {noreply, NewState} ->
-          ReplyAfterReconnect = riakc_pb_socket:fetch_type(NewState#state.riak_kv_pid, {<<"sets">>, Bucket}, Key),
+          ReplyAfterReconnect = riakc_pb_socket:fetch_type(NewState#state.riak_kv_pid, {Bucket, Bucket}, Key),
           case ReplyAfterReconnect of
             {ok, Set} ->
               {reply, riakc_set:value(Set), NewState};
@@ -217,13 +217,13 @@ handle_call({get_set, Bucket, Key}, _From, State) ->
 
 % Callback for getRawSetVal api function
 handle_call({get_raw_set, Bucket, Key}, _From, State) ->
-  GetResult = riakc_pb_socket:fetch_type(State#state.riak_kv_pid, {<<"sets">>, Bucket}, Key),
+  GetResult = riakc_pb_socket:fetch_type(State#state.riak_kv_pid, {Bucket, Bucket}, Key),
   Result = case GetResult of
              {error, disconnected} ->
                RestoreResult = restoreConnection(State),
                case RestoreResult of
                  {noreply, NewState} ->
-                   ReplyAfterReconnect = riakc_pb_socket:fetch_type(NewState#state.riak_kv_pid, {<<"sets">>, Bucket}, Key),
+                   ReplyAfterReconnect = riakc_pb_socket:fetch_type(NewState#state.riak_kv_pid, {Bucket, Bucket}, Key),
                    case ReplyAfterReconnect of
                      {ok, Set} ->
                        {reply, Set, NewState};
@@ -245,13 +245,13 @@ handle_call({get_raw_set, Bucket, Key}, _From, State) ->
 
 % Callback for storeSetObject api function
 handle_call({store_set, Bucket, Key, Set}, _From, State) ->
-  Reply = riakc_pb_socket:update_type(State#state.riak_kv_pid, {<<"sets">>, Bucket}, Key, riakc_set:to_op(Set)),
+  Reply = riakc_pb_socket:update_type(State#state.riak_kv_pid, {Bucket, Bucket}, Key, riakc_set:to_op(Set)),
   Result = case Reply of
     {error, disconnected} ->
       RestoreResult = restoreConnection(State),
       case RestoreResult of
         {noreply, NewState} ->
-          ReplyAfterReconnect = riakc_pb_socket:update_type(NewState#state.riak_kv_pid, {<<"sets">>, Bucket}, Key, riakc_set:to_op(Set)),
+          ReplyAfterReconnect = riakc_pb_socket:update_type(NewState#state.riak_kv_pid, {Bucket, Bucket}, Key, riakc_set:to_op(Set)),
           {reply, ReplyAfterReconnect, NewState};
         _ ->
           {stop, connection_lost, {error, disconnected}, State}
