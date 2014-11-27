@@ -9,7 +9,8 @@
 -export([storeData/4, storeData/5, storeData/6, createObject/4, createLocalObject/4, createLocalObject/5,
   storeLocalObject/2, storeLocalObject/3, getObject/3, getRawObject/3, getRawObject/4, updateObject/4, updateObject/2, deleteObject/3,
   setBucketProperties/4, getKeysList/2, getBucketsList/1, searchBySecondaryIndex/4,
-  createEmptySet/0, addToSet/2, removeFromSet/2, getSetSize/1, getSetVal/3, getRawSetVal/3, getLocalSetVal/1, storeSetObject/4]).
+  createEmptySet/0, addToSet/2, removeFromSet/2, getSetSize/1, getTypedObjVal/4, getRawTypedObj/3, getLocalSetVal/1, storeTypedObject/5,
+  createEmptyMap/0, storeAtMap/2, removeFromMap/2, fetchFromMap/2, fetchMapKeys/1, mapContainsKey/2, getMapSize/1]).
 
 %% Helpers
 -export([getValuesCount/1, getValues/1, getObjectSibling/2, getObjectMetadata/1, updateObjectMetadata/2, getMetadataEntry/2,
@@ -662,34 +663,6 @@ getSetSize(Set) ->
 
 %%--------------------------------------------------------------------
 %% @doc
-%% Gets specified set value from specified bucket
-%%
-%% @spec getSetVal(Bucket, Key, NewValue) -> {ok, Val} | {error, Error}
-%% Bucket - Bucket name - binary()
-%% Key - Key to associate set with - binary()
-%% @end
-%%--------------------------------------------------------------------
-getSetVal(PoolName, Bucket, Key) ->
-  poolboy:transaction(PoolName, fun(Worker) ->
-    gen_server:call(Worker, {get_set, Bucket, Key}, infinity)
-  end, infinity).
-
-%%--------------------------------------------------------------------
-%% @doc
-%% Gets specified set object from specified bucket
-%%
-%% @spec getSetVal(Bucket, Key) -> {ok, Set} | {error, Error}
-%% Bucket - Bucket name - binary()
-%% Key - Key to associate set with - binary()
-%% @end
-%%--------------------------------------------------------------------
-getRawSetVal(PoolName, Bucket, Key) ->
-  poolboy:transaction(PoolName, fun(Worker) ->
-    gen_server:call(Worker, {get_raw_set, Bucket, Key}, infinity)
-  end, infinity).
-
-%%--------------------------------------------------------------------
-%% @doc
 %% Gets value from specified local set object
 %%
 %% @spec getLocalSetVal(Set) -> any()
@@ -701,17 +674,138 @@ getLocalSetVal(Set) ->
 
 %%--------------------------------------------------------------------
 %% @doc
-%% Stores specified set object at riak at specified bucket and key
+%% Creates new empty map object (since Riak 2.0)
 %%
-%% @spec storeSetObject(Bucket, Key, Set) -> ok | {error, Error}
-%% Bucket - Bucket name - binary()
-%% Key - Key to associate set with - binary()
-%% Set - set object to store - set()
+%% @spec createEmptyMap() -> map()
 %% @end
 %%--------------------------------------------------------------------
-storeSetObject(PoolName, Bucket, Key, Set) ->
+createEmptyMap() ->
+  riakc_map:new().
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Stores specified entry at map. If entry with specified key exists -
+%% it will be replaced
+%%
+%% @spec storeAtMap(Map, Entry) -> map()
+%% Map - map(), map to add data to
+%% Entry - term() entry to add to set
+%% @end
+%%--------------------------------------------------------------------
+storeAtMap(Map, {register, Key, Val}) ->
+  riakc_map:update({Key, register}, fun(R) -> riakc_register:set(Val, R) end, Map);
+storeAtMap(Map, {flag, Operation, Key}) ->
+  riakc_map:update({Key, flag}, fun(F) -> riakc_flag:Operation(F) end, Map);
+storeAtMap(_Map, {counter, _Operation, _Key, Val}) when is_integer(Val) == false ->
+  {error, badarg};
+storeAtMap(Map, {counter, Operation, Key, Val}) ->
+  riakc_map:update({Key, counter}, fun(C) -> riakc_counter:Operation(Val, C) end, Map);
+storeAtMap(Map, {set, Key, Val}) ->
+  riakc_map:update({Key, set}, fun(S) -> riakc_set:add_element(Val, S) end, Map);
+storeAtMap(_Map, _Operation) ->
+  {error, badoper}.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Removes specified entry from map
+%%
+%% @spec removeFromMap(Map, Key) -> map()
+%% Map - map(), map to remove data from
+%% Key - binary(), entry key to remove
+%% @end
+%%--------------------------------------------------------------------
+removeFromMap(Map, Key) ->
+  riakc_map:erase(Key, Map).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets entry with specified key from map. If entry with specified doesn't exists -
+%% error returned
+%%
+%% @spec fetchFromMap(Map, Key) -> {ok, Entry} | error
+%% Map - map(), map to find data at
+%% Key - binary(), key assosiated with entry
+%% @end
+%%--------------------------------------------------------------------
+fetchFromMap(Map, Key) ->
+  riakc_map:find(Key, Map).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets all keys from map
+%%
+%% @spec fetchMapKeys(Map) -> [binary()]
+%% Map - map(), map to fetch keys from
+%% @end
+%%--------------------------------------------------------------------
+fetchMapKeys(Map) ->
+  riakc_map:fetch_keys(Map).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Check map constains specified key
+%%
+%% @spec mapContainsKey(Map, Key) -> true | false
+%% Map - map(), map to check
+%% Key - binary(), key to check
+%% @end
+%%--------------------------------------------------------------------
+mapContainsKey(Map, Key) ->
+  riakc_map:is_key(Key, Map).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets specified map size
+%%
+%% @spec getMapSize(Map) -> integer()
+%% Map - map(), map to get size
+%% @end
+%%--------------------------------------------------------------------
+getMapSize(Map) ->
+  riakc_map:size(Map).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets specified typed object value from specified bucket
+%%
+%% @spec getTypedObjVal(Type, Bucket, Key, NewValue) -> {ok, Val} | {error, Error}
+%% Type - riakc_set | riakc_map - atom()
+%% Bucket - Bucket name - binary()
+%% Key - Key to associate object with - binary()
+%% @end
+%%--------------------------------------------------------------------
+getTypedObjVal(PoolName, Type, Bucket, Key) ->
   poolboy:transaction(PoolName, fun(Worker) ->
-    gen_server:call(Worker, {store_set, Bucket, Key, Set}, infinity)
+    gen_server:call(Worker, {get_typed_obj, Type, Bucket, Key}, infinity)
+  end, infinity).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Gets specified typed object from specified bucket
+%%
+%% @spec getRawTypedObj(Bucket, Key, NewValue) -> {ok, Val} | {error, Error}
+%% Bucket - Bucket name - binary()
+%% Key - Key to associate object with - binary()
+%% @end
+%%--------------------------------------------------------------------
+getRawTypedObj(PoolName, Bucket, Key) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, {get_raw_typed_obj, Bucket, Key}, infinity)
+  end, infinity).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Stores specified CRDT object at riak at specified bucket and key
+%%
+%% @spec storeTypedObject(Bucket, Key, Type, Obj) -> ok | {error, Error}
+%% Bucket - Bucket name - binary()
+%% Key - Key to associate object with - binary()
+%% Type - riakc_set | riakc_map
+%% @end
+%%--------------------------------------------------------------------
+storeTypedObject(PoolName, Bucket, Key, Type, Obj) ->
+  poolboy:transaction(PoolName, fun(Worker) ->
+    gen_server:call(Worker, {store_typed_obj, Bucket, Key, Type, Obj}, infinity)
   end, infinity).
 
 %%%===================================================================
