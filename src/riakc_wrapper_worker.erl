@@ -582,7 +582,8 @@ decodeObject(RiakObject) ->
 
 safeBinToTerm(Bin) ->
   try
-    binary_to_term(Bin)
+    Term = binary_to_term(Bin),
+    {ok, Term}
   catch
     _:Reason ->
       {error, Reason}
