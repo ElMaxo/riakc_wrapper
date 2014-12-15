@@ -9,7 +9,7 @@
 -export([storeData/4, storeData/5, storeData/6, createObject/4, createLocalObject/4, createLocalObject/5,
   storeLocalObject/2, storeLocalObject/3, getObject/3, getRawObject/3, getRawObject/4, updateObject/4, updateObject/2, deleteObject/3,
   setBucketProperties/4, getKeysList/2, getBucketsList/1, searchBySecondaryIndex/4,
-  createEmptySet/0, addToSet/2, removeFromSet/2, getSetSize/1, getTypedObjVal/4, getRawTypedObj/3, getLocalSetVal/1, storeTypedObject/5,
+  createEmptySet/0, addToSet/2, removeFromSet/2, getSetSize/1, setContainsValue/2, getTypedObjVal/4, getRawTypedObj/3, getLocalSetVal/1, storeTypedObject/5,
   createEmptyMap/0, storeAtMap/2, removeFromMap/2, fetchFromMap/2, fetchMapKeys/1, mapContainsKey/2, getMapSize/1]).
 
 %% Helpers
@@ -671,6 +671,16 @@ getSetSize(Set) ->
 %%--------------------------------------------------------------------
 getLocalSetVal(Set) ->
   riakc_set:value(Set).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Check specified element is set member
+%%
+%% @spec setContainsValue(Set, Value) -> true | false
+%% @end
+%%--------------------------------------------------------------------
+setContainsValue(Set, Value) ->
+  riakc_set:is_element(Value, Set).
 
 %%--------------------------------------------------------------------
 %% @doc
